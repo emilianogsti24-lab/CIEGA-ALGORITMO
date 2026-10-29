@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Búsqueda ciega — Laberinto 5×5</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #17212b;
+      background: #f1f5f9;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      padding: 32px 18px;
+      background: linear-gradient(145deg, #f8fafc, #e8eff5);
+    }
+
+    main {
+      width: min(940px, 100%);
+      margin: 0 auto;
+      padding: 28px;
+      border: 1px solid #dce5ec;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 16px 48px #26323814;
+    }
+
+    h1 { margin: 0 0 22px; font-size: clamp(22px, 4vw, 30px); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(230px, 300px) minmax(280px, 1fr);
+      align-items: start;
+      gap: 30px;
+    }
+
+    .controls { display: grid; gap: 12px; }
+    label { font-size: 14px; font-weight: 650; }
+
+    select, button {
+      width: 100%;
+      min-height: 42px;
+      padding: 9px 12px;
+      border: 1px solid #cbd5df;
+      border-radius: 9px;
+      background: #fff;
+      color: inherit;
+      font: inherit;
+    }
+
+    select:focus-visible, button:focus-visible, input:focus-visible {
+      outline: 3px solid #90caf9;
+      outline-offset: 2px;
+    }
+
+    button {
+      border-color: #1565c0;
+      background: #1565c0;
+      color: #fff;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) { background: #0d4f9b; }
+    button:disabled { border-color: #b8c5d0; background: #b8c5d0; cursor: not-allowed; }
+    button.secondary { border-color: #cbd5df; background: #f7f9fb; color: #17212b; }
+    button.secondary:hover:not(:disabled) { background: #e8eff5; }
+
+    .speed-row { display: flex; justify-content: space-between; gap: 10px; }
+    input[type="range"] { width: 100%; accent-color: #1565c0; }
+    output { color: #52616b; font-size: 13px; white-space: nowrap; }
+
+    #status {
+      min-height: 84px;
+      margin: 4px 0 0;
+      padding: 13px;
+      border-radius: 9px;
+      background: #f1f5f9;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .legend { display: grid; gap: 8px; color: #52616b; font-size: 13px; }
+    .legend span { display: flex; align-items: center; gap: 9px; }
+    .swatch { width: 15px; height: 15px; border: 1px solid #bdc9d2; border-radius: 4px; }
+    .swatch.visited { background: #b3e5fc; }
+    .swatch.path { background: #a5d6a7; }
+    .swatch.open { background: #fff; }
+
+    .board { min-width: 0; text-align: center; }
+
+    canvas {
+      display: block;
+      width: min(100%, 410px);
+      height: auto;
+      margin: 0 auto;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    #step-log {
+      height: 150px;
+      overflow-y: auto;
+      margin-top: 16px;
+      padding: 12px 14px;
+      border: 1px solid #e1e8ee;
+      border-radius: 9px;
+      background: #f8fafc;
+      color: #52616b;
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: left;
+    }
+
+    #step-log p { margin: 0 0 3px; }
+    @media (max-width: 680px) {
+      body { padding: 14px 10px; }
+      main { padding: 20px 16px; }
+      .layout { grid-template-columns: 1fr; gap: 20px; }
+      .board { grid-row: 1; }
+      #step-log { height: 115px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Búsqueda ciega en un laberinto 5×5</h1>
+    <div class="layout">
+      <section class="controls" aria-label="Controles de búsqueda">
+        <label for="algorithm">Algoritmo de búsqueda</label>
+        <select id="algorithm">
+          <option value="bfs">Búsqueda en anchura (BFS)</option>
+          <option value="dfs">Búsqueda en profundidad (DFS)</option>
+          <option value="ucs">Búsqueda de costo uniforme</option>
+          <option value="bidirectional">Búsqueda bidireccional</option>
+          <option value="dls">Búsqueda en profundidad limitada</option>
+          <option value="ids">Profundización iterativa</option>
+        </select>
+
+        <button id="start">Iniciar búsqueda</button>
+        <button id="pause" class="secondary" disabled>Pausar</button>
+        <button id="clear" class="secondary">Limpiar camino</button>
+        <button id="new-maze" class="secondary">Generar nuevo laberinto</button>
+
+        <label for="speed">Velocidad de animación</label>
+        <div class="speed-row">
+          <input id="speed" type="range" min="30" max="1000" step="10" value="350">
+          <output id="speed-label" for="speed">350 ms</output>
+        </div>
+
+        <p id="status" role="status" aria-live="polite">Elige un algoritmo y presiona «Iniciar búsqueda».</p>
+        <div class="legend" aria-label="Leyenda">
+          <span><i class="swatch visited"></i> Celda explorada</span>
+          <span><i class="swatch path"></i> Camino encontrado</span>
+          <span><i class="swatch open"></i> Celda sin explorar</span>
+          <span>I: inicio &nbsp; F: meta</span>
+        </div>
+      </section>
+
+      <section class="board" aria-label="Laberinto y pasos de búsqueda">
+        <canvas id="maze" width="410" height="410" aria-label="Laberinto de cinco por cinco"></canvas>
+        <div id="step-log" aria-label="Registro paso a paso"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    "use strict";
+
+    const SIZE = 5;
+    const START = 0;
+    const GOAL = SIZE * SIZE - 1;
+    const CELL = 74;
+    const OFFSET = 20;
+    const canvas = document.querySelector("#maze");
+    const ctx = canvas.getContext("2d");
+    const status = document.querySelector("#status");
+    const log = document.querySelector("#step-log");
+    const startButton = document.querySelector("#start");
+    const pauseButton = document.querySelector("#pause");
+    const speed = document.querySelector("#speed");
+    let graph;
+    let events = [];
+    let path = [];
+    let visited = new Set();
+    let pathCells = new Set();
+    let eventIndex = 0;
+    let timer = null;
+    let paused = false;
+    let running = false;
+
+    function neighborsOf(cell) {
+      const row = Math.floor(cell / SIZE);
+      const column = cell % SIZE;
+      return [
+        row > 0 ? cell - SIZE : -1,
+        row < SIZE - 1 ? cell + SIZE : -1,
+        column > 0 ? cell - 1 : -1,
+        column < SIZE - 1 ? cell + 1 : -1,
+      ].filter((next) => next !== -1);
+    }
+
+    function generateMaze() {
+      const maze = Array.from({ length: SIZE * SIZE }, () => []);
+      const discovered = new Set([START]);
+      const stack = [START];
+      while (stack.length) {
+        const current = stack[stack.length - 1];
+        const options = neighborsOf(current).filter((next) => !discovered.has(next));
+        if (!options.length) {
+          stack.pop();
+          continue;
+        }
+        const next = options[Math.floor(Math.random() * options.length)];
+        maze[current].push(next);
+        maze[next].push(current);
+        discovered.add(next);
+        stack.push(next);
+      }
+      return maze;
+    }
+
+    function restorePath(parent, goal) {
+      const result = [];
+      for (let cell = goal; cell !== null; cell = parent.get(cell)) result.push(cell);
+      return result.reverse();
+    }
+
+    function breadthFirstSearch(maze) {
+      const frontier = [START];
+      const parent = new Map([[START, null]]);
+      const steps = [];
+      let head = 0;
+      while (head < frontier.length) {
+        const current = frontier[head++];
+        steps.push({ cell: current, pending: frontier.length - head, action: "Expandiendo" });
+        if (current === GOAL) return { events: steps, path: restorePath(parent, GOAL) };
+        for (const next of maze[current]) {
+          if (!parent.has(next)) {
+            parent.set(next, current);
+            frontier.push(next);
+          }
+        }
+      }
+      return { events: steps, path: [] };
+    }
+
+    function depthFirstSearch(maze) {
+      const frontier = [START];
+      const parent = new Map([[START, null]]);
+      const steps = [];
+      while (frontier.length) {
+        const current = frontier.pop();
+        steps.push({ cell: current, pending: frontier.length, action: "Expandiendo" });
+        if (current === GOAL) return { events: steps, path: restorePath(parent, GOAL) };
+        for (const next of [...maze[current]].reverse()) {
+          if (!parent.has(next)) {
+            parent.set(next, current);
+            frontier.push(next);
+          }
+        }
+      }
+      return { events: steps, path: [] };
+    }
+
+    function uniformCostSearch(maze) {
+      const frontier = [{ cell: START, cost: 0 }];
+      const parent = new Map([[START, null]]);
+      const costs = new Map([[START, 0]]);
+      const steps = [];
+      while (frontier.length) {
+        frontier.sort((a, b) => a.cost - b.cost);
+        const { cell, cost } = frontier.shift();
+        if (cost !== costs.get(cell)) continue;
+        steps.push({ cell, pending: frontier.length, action: "Expandiendo (costo " + cost + ")" });
+        if (cell === GOAL) return { events: steps, path: restorePath(parent, GOAL) };
+        for (const next of maze[cell]) {
+          if (cost + 1 < (costs.get(next) ?? Infinity)) {
+            costs.set(next, cost + 1);
+            parent.set(next, cell);
+            frontier.push({ cell: next, cost: cost + 1 });
+          }
+        }
+      }
+      return { events: steps, path: [] };
+    }
+
+    function bidirectionalSearch(maze) {
+      let fromStart = [START];
+      let fromGoal = [GOAL];
+      const startParent = new Map([[START, null]]);
+      const goalParent = new Map([[GOAL, null]]);
+      const steps = [];
+
+      while (fromStart.length && fromGoal.length) {
+        const expandStart = fromStart.length <= fromGoal.length;
+        const frontier = expandStart ? fromStart : fromGoal;
+        const ownParent = expandStart ? startParent : goalParent;
+        const otherParent = expandStart ? goalParent : startParent;
+        const layerLength = frontier.length;
+        let meeting = null;
+
+        for (let i = 0; i < layerLength; i++) {
+          const current = frontier.shift();
+          steps.push({
+            cell: current,
+            pending: fromStart.length + fromGoal.length,
+            action: expandStart ? "Expandiendo desde inicio" : "Expandiendo desde meta",
+          });
+          if (otherParent.has(current)) {
+            meeting = current;
+            break;
+          }
+          for (const next of maze[current]) {
+            if (ownParent.has(next)) continue;
+            ownParent.set(next, current);
+            frontier.push(next);
+            if (otherParent.has(next)) {
+              meeting = next;
+              break;
+            }
+          }
+          if (meeting !== null) break;
+        }
+
+        if (meeting !== null) {
+          const left = [];
+          for (let cell = meeting; cell !== null; cell = startParent.get(cell)) left.push(cell);
+          left.reverse();
+          const right = [];
+          for (let cell = goalParent.get(meeting); cell !== null; cell = goalParent.get(cell)) right.push(cell);
+          return { events: steps, path: left.concat(right) };
+        }
+      }
+      return { events: steps, path: [] };
+    }
+
+    function depthLimitedSearch(maze, limit) {
+      const steps = [];
+      function visit(cell, depth, route) {
+        steps.push({ cell, pending: Math.max(0, limit - depth), action: "Probando profundidad " + depth });
+        if (cell === GOAL) return route.slice();
+        if (depth === limit) return null;
+        for (const next of maze[cell]) {
+          if (route.includes(next)) continue;
+          route.push(next);
+          const result = visit(next, depth + 1, route);
+          if (result) return result;
+          route.pop();
+        }
+        return null;
+      }
+      return { events: steps, path: visit(START, 0, [START]) ?? [] };
+    }
+
+    function iterativeDeepeningSearch(maze) {
+      const steps = [];
+      for (let limit = 0; limit < SIZE * SIZE; limit++) {
+        const result = depthLimitedSearch(maze, limit);
+        steps.push(...result.events);
+        if (result.path.length) return { events: steps, path: result.path };
+      }
+      return { events: steps, path: [] };
+    }
+
+    const searches = {
+      bfs: breadthFirstSearch,
+      dfs: depthFirstSearch,
+      ucs: uniformCostSearch,
+      bidirectional: bidirectionalSearch,
+      dls: (maze) => depthLimitedSearch(maze, SIZE * SIZE - 1),
+      ids: iterativeDeepeningSearch,
+    };
+
+    function drawMaze() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (let row = 0; row < SIZE; row++) {
+        for (let column = 0; column < SIZE; column++) {
+          const cell = row * SIZE + column;
+          const x = OFFSET + column * CELL;
+          const y = OFFSET + row * CELL;
+          ctx.fillStyle = pathCells.has(cell) ? "#a5d6a7" : visited.has(cell) ? "#b3e5fc" : "#ffffff";
+          ctx.fillRect(x, y, CELL, CELL);
+          ctx.strokeStyle = "#263238";
+          ctx.beginPath();
+          if (row === 0) { ctx.moveTo(x, y); ctx.lineTo(x + CELL, y); }
+          if (column === 0) { ctx.moveTo(x, y); ctx.lineTo(x, y + CELL); }
+          if (!graph[cell].includes(cell + 1)) { ctx.moveTo(x + CELL, y); ctx.lineTo(x + CELL, y + CELL); }
+          if (!graph[cell].includes(cell + SIZE)) { ctx.moveTo(x, y + CELL); ctx.lineTo(x + CELL, y + CELL); }
+          ctx.stroke();
+          if (cell === START || cell === GOAL) {
+            ctx.fillStyle = cell === START ? "#2e7d32" : "#c62828";
+            ctx.font = "bold 23px -apple-system, BlinkMacSystemFont, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(cell === START ? "I" : "F", x + CELL / 2, y + CELL / 2);
+          }
+        }
+      }
+    }
+
+    function cellName(cell) {
+      return "fila " + (Math.floor(cell / SIZE) + 1) + ", columna " + (cell % SIZE + 1);
+    }
+
+    function addLog(message) {
+      const line = document.createElement("p");
+      line.textContent = message;
+      log.append(line);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function resetSearch() {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      running = false;
+      paused = false;
+      events = [];
+      path = [];
+      visited = new Set();
+      pathCells = new Set();
+      eventIndex = 0;
+      startButton.disabled = false;
+      pauseButton.disabled = true;
+      pauseButton.textContent = "Pausar";
+      log.replaceChildren();
+      drawMaze();
+    }
+
+    function finishSearch() {
+      running = false;
+      pauseButton.disabled = true;
+      startButton.disabled = false;
+      status.textContent = "¡Meta encontrada! " + (path.length - 1) + " pasos en el camino; " + events.length + " expansiones.";
+      addLog("Búsqueda finalizada: camino de " + (path.length - 1) + " pasos.");
+    }
+
+    function animateNext() {
+      timer = null;
+      if (paused || !running) return;
+      if (eventIndex < events.length) {
+        const event = events[eventIndex];
+        eventIndex++;
+        visited.add(event.cell);
+        status.textContent = "Paso " + eventIndex + " de " + events.length + ": " + event.action + " la celda " + cellName(event.cell) + ". Pendientes: " + event.pending + ".";
+        addLog("Paso " + eventIndex + ": " + event.action + " la celda " + cellName(event.cell) + ".");
+        drawMaze();
+      } else if (pathCells.size < path.length) {
+        const cell = path[pathCells.size];
+        pathCells.add(cell);
+        status.textContent = "Camino encontrado: agregando " + cellName(cell) + " (" + pathCells.size + " de " + path.length + ").";
+        drawMaze();
+      } else {
+        finishSearch();
+        return;
+      }
+      timer = window.setTimeout(animateNext, Number(speed.value));
+    }
+
+    startButton.addEventListener("click", () => {
+      resetSearch();
+      const result = searches[document.querySelector("#algorithm").value](graph);
+      events = result.events;
+      path = result.path;
+      if (!path.length) {
+        status.textContent = "No se encontró un camino hasta la meta.";
+        return;
+      }
+      running = true;
+      pauseButton.disabled = false;
+      status.textContent = "Iniciando " + document.querySelector("#algorithm").selectedOptions[0].text + ".";
+      addLog("Inicio de la búsqueda desde la celda " + cellName(START) + ".");
+      animateNext();
+    });
+
+    pauseButton.addEventListener("click", () => {
+      if (!running) return;
+      paused = !paused;
+      pauseButton.textContent = paused ? "Reanudar" : "Pausar";
+      if (paused) {
+        if (timer !== null) window.clearTimeout(timer);
+        timer = null;
+        status.textContent = "Búsqueda pausada. Presiona «Reanudar» para seguir.";
+      } else {
+        animateNext();
+      }
+    });
+
+    document.querySelector("#clear").addEventListener("click", () => {
+      resetSearch();
+      status.textContent = "Camino y exploración limpiados.";
+    });
+
+    document.querySelector("#new-maze").addEventListener("click", () => {
+      resetSearch();
+      graph = generateMaze();
+      status.textContent = "Nuevo laberinto generado. Elige un algoritmo.";
+      drawMaze();
+    });
+
+    speed.addEventListener("input", () => {
+      document.querySelector("#speed-label").value = speed.value + " ms";
+    });
+
+    graph = generateMaze();
+    drawMaze();
+  </script>
+</body>
+</html>
